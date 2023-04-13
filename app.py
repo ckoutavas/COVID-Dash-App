@@ -19,13 +19,10 @@ df[df.columns[4:]] = df[df.columns[4:]].astype(float)
 most_current_df = df.iloc[df.groupby('state')['start_date'].idxmax()]
 
 # create the map
-covid_map = px.choropleth(most_current_df,
-                          locations='state',
-                          locationmode="USA-states",
-                          scope="usa",
-                          color='tot_cases',
-                          color_continuous_scale=px.colors.diverging.RdYlGn_r,
-                          labels={'tot_cases': 'Total Cases'})
+covid_map = px.choropleth(most_current_df, locations='state', locationmode="USA-states", scope="usa",
+                          color='tot_cases', color_continuous_scale=px.colors.diverging.RdYlGn_r,
+                          labels={'tot_cases': 'Total Cases', 'state': 'State'})
+
 covid_map.update_layout(dict(height=400))
 
 external_stylesheets = [dbc.themes.BOOTSTRAP, 'https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -33,7 +30,7 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 
 app.layout = html.Div([
-    html.Center(html.H1('COVID-19 Total Cases')),
+    html.Center(html.H1('COVID-19 Cases by State')),
     dcc.Graph(id="covid-map", figure=covid_map),
     html.Div(id='covid-state-data')
 ])
