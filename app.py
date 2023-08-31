@@ -1,66 +1,87 @@
-import pandas as pd
-import requests
-import plotly.express as px
+import graphs
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import dash
 from dash.dependencies import Input, Output
-from dash import dcc, html
+from dash import dcc, html, ctx
 import dash_bootstrap_components as dbc
 
+card_css = {'margin': '10px 10px 10px 0px'}
 
-# get the COVID data and normalize the json data
-resp = requests.get('https://data.cdc.gov/resource/pwn4-m3yp.json?$limit=50000').json()
-df = pd.json_normalize(resp)
-# convert string dates to datetime
-df[['date_updated', 'start_date', 'end_date']] = df[['date_updated', 'start_date', 'end_date']].apply(pd.to_datetime)
-# convert string numbers to float
-df[df.columns[4:]] = df[df.columns[4:]].astype(float)
-most_current_df = df.iloc[df.groupby('state')['start_date'].idxmax()]
-
-# create the map
-covid_map = px.choropleth(most_current_df, locations='state', locationmode="USA-states", scope="usa",
-                          color='tot_cases', color_continuous_scale=px.colors.diverging.RdYlGn_r,
-                          labels={'tot_cases': 'Total Cases', 'state': 'State'})
-
-covid_map.update_layout(dict(height=400))
-
-external_stylesheets = [dbc.themes.BOOTSTRAP, 'https://codepen.io/chriddyp/pen/bWLwgP.css']
+external_stylesheets = [dbc.themes.DARKLY]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 
 app.layout = html.Div([
-    html.Center(html.H1('COVID-19 Cases by State')),
-    dcc.Graph(id="covid-map", figure=covid_map),
-    html.Div(id='covid-state-data')
+    dbc.Container([
+        # cards / graphs layout
+        html.Div([
+            # row 1
+            dbc.CardGroup([
+                # covid map
+                dbc.Card([
+                    dcc.Graph(id="covid-map", figure=graphs.covid_map)
+                ], style=card_css),
+                # state graph
+                dbc.Card([
+                    html.Div([dbc.Button('Reset', id='reset-button', n_clicks=0)],
+                             style={'margin-right': '10px', 'margin-top': '10px',
+                                    'margin-bottom': '10px', 'text-align': 'right'}),
+                    html.Div(id='covid-state-data')
+                ], style=card_css)
+            ], ),
+            # row 2
+            dbc.CardGroup([
+                # covid death graph
+                dbc.Card([
+                    dcc.Graph(id='covid-deaths', figure=graphs.death_fig)
+                ], style={'margin-right': '10px'})
+            ])
+        ]),
+    ], fluid=True)
 ])
 
 
+# callback function to set the new graph when a state is clicked
 @app.callback(Output('covid-state-data', 'children'),
-              Input('covid-map', 'clickData'))
-def state_click(click_data):
-    if click_data:
+              Input('covid-map', 'clickData'),
+              Input('reset-button', 'n_clicks'))
+def state_click(state_clicks, n_clicks):
+    # reset data if reset button is clicked
+    if ctx.triggered_id == 'reset-button':
+        return dcc.Graph(id='all-covid-data', figure=graphs.all_data_fig)
+    # else if a state is clicked then get the state data
+    elif state_clicks:
         # get the name of the state clicked
-        click_loc = click_data['points'][0]['location']
+        click_loc = state_clicks['points'][0]['location']
         # filter covid df
+        df = graphs.df
         state_df = df[df['state'].eq(click_loc)].sort_values('start_date')
         # create the new line + bar graph for the state clicked
         state_fig = make_subplots(specs=[[{"secondary_y": True}]])
-
+        # create the graph
         state_fig.add_trace(
             go.Scatter(x=state_df['start_date'], y=state_df['tot_cases'],
-                       name=f'{click_loc} Total Cases', mode='lines'),
+                       name=f'{click_loc} Total Cases', mode='lines', showlegend=False),
             secondary_y=False
         )
 
         state_fig.add_trace(
-            go.Bar(x=state_df['start_date'], y=state_df['new_cases'], name=f'{click_loc} New Cases'),
+            go.Bar(x=state_df['start_date'], y=state_df['new_cases'], name=f'{click_loc} New Cases', showlegend=False),
             secondary_y=True
         )
 
-        state_fig.update_layout(dict(hovermode='x unified', title=f'{click_loc} COVID-19 Data', height=400))
+        state_fig.update_layout(dict(hovermode='x unified',
+                                     title=f'{click_loc} COVID-19 Cases',
+                                     template='plotly_dark',
+                                     plot_bgcolor='rgba(0, 0, 0, 0)',
+                                     paper_bgcolor='rgba(0, 0, 0, 0)'
+                                     ))
 
         return dcc.Graph(id=f'{click_loc}-covid-data', figure=state_fig)
+    # else just use all the data
+    else:
+        return dcc.Graph(id='all-covid-data', figure=graphs.all_data_fig)
 
 
 if __name__ == '__main__':
